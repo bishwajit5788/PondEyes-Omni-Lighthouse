@@ -1,0 +1,188 @@
+{
+  "system": {
+    "project": "PondEyes Omni-Lighthouse",
+    "version": "1.0.0",
+    "architecture": "Dual Teensy 4.1 + XIAO ESP32-S3",
+    "units": {
+      "distance": "millimeters (mm)",
+      "velocity": "centimeters per second (cm/s)",
+      "angle": "degrees (°)",
+      "frequency": "Hertz (Hz)"
+    }
+  },
+  "arena": {
+    "dimensions_mm": [10000, 10000],
+    "center_grid_mm": [5000, 5000],
+    "boundary_min_mm": [0, 0],
+    "boundary_max_mm": [10000, 10000]
+  },
+  "lighthouse": {
+    "mounting_diameter_mm": 130.0,
+    "mounting_radius_mm": 65.0,
+    "compartments_count": 6,
+    "angular_step_deg": 60.0,
+    "waveguide_depth_mm": 35.0,
+    "seam_deduplication_threshold_mm": 500.0
+  },
+  "sensors": [
+    {
+      "sensor_id": 1,
+      "node_id": "NODE_A",
+      "hardware_port": "Serial1",
+      "rx_pin": 0,
+      "tx_pin": 1,
+      "baudrate": 256000,
+      "angle_deg": 0.0,
+      "mount_offset_x_mm": 0.0,
+      "mount_offset_y_mm": 65.0,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S1"
+    },
+    {
+      "sensor_id": 2,
+      "node_id": "NODE_A",
+      "hardware_port": "Serial2",
+      "rx_pin": 7,
+      "tx_pin": 8,
+      "baudrate": 256000,
+      "angle_deg": 60.0,
+      "mount_offset_x_mm": 56.29,
+      "mount_offset_y_mm": 32.5,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S2"
+    },
+    {
+      "sensor_id": 3,
+      "node_id": "NODE_A",
+      "hardware_port": "Serial3",
+      "rx_pin": 14,
+      "tx_pin": 15,
+      "baudrate": 256000,
+      "angle_deg": 120.0,
+      "mount_offset_x_mm": 56.29,
+      "mount_offset_y_mm": -32.5,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S3"
+    },
+    {
+      "sensor_id": 4,
+      "node_id": "NODE_B",
+      "hardware_port": "Serial1",
+      "rx_pin": 0,
+      "tx_pin": 1,
+      "baudrate": 256000,
+      "angle_deg": 180.0,
+      "mount_offset_x_mm": 0.0,
+      "mount_offset_y_mm": -65.0,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S4"
+    },
+    {
+      "sensor_id": 5,
+      "node_id": "NODE_B",
+      "hardware_port": "Serial2",
+      "rx_pin": 7,
+      "tx_pin": 8,
+      "baudrate": 256000,
+      "angle_deg": 240.0,
+      "mount_offset_x_mm": -56.29,
+      "mount_offset_y_mm": -32.5,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S5"
+    },
+    {
+      "sensor_id": 6,
+      "node_id": "NODE_B",
+      "hardware_port": "Serial3",
+      "rx_pin": 14,
+      "tx_pin": 15,
+      "baudrate": 256000,
+      "angle_deg": 300.0,
+      "mount_offset_x_mm": -56.29,
+      "mount_offset_y_mm": 32.5,
+      "azimuth_fov_deg": 120.0,
+      "elevation_fov_deg": 40.0,
+      "min_range_mm": 100,
+      "max_range_mm": 6000,
+      "mqtt_topic": "PondEyes/lighthouse/S6"
+    }
+  ],
+  "hardware_pinout": {
+    "teensy_node_a": {
+      "spi_cs_pin": 10,
+      "spi_mosi_pin": 11,
+      "spi_miso_pin": 12,
+      "spi_sck_pin": 13,
+      "drdy_pin": 2,
+      "status_led_pin": 13
+    },
+    "teensy_node_b": {
+      "spi_cs_pin": 10,
+      "spi_mosi_pin": 11,
+      "spi_miso_pin": 12,
+      "spi_sck_pin": 13,
+      "drdy_pin": 2,
+      "status_led_pin": 13
+    },
+    "xiao_esp32s3_master": {
+      "spi_sck_pin": 7,
+      "spi_miso_pin": 8,
+      "spi_mosi_pin": 9,
+      "cs_node_a_pin": 2,
+      "cs_node_b_pin": 3,
+      "drdy_node_a_pin": 4,
+      "drdy_node_b_pin": 5,
+      "status_led_pin": 21
+    }
+  },
+  "network": {
+    "wifi": {
+      "ssid": "PondEyes_Field_AP",
+      "password": "OmniLighthouse2026",
+      "reconnect_interval_ms": 5000,
+      "watchdog_timeout_sec": 8
+    },
+    "mqtt": {
+      "broker_host": "192.168.1.100",
+      "broker_port": 1883,
+      "client_id": "PondEyes_Lighthouse_Coord",
+      "username": "pondeyes_user",
+      "password": "pondeyes_secure_pass",
+      "broadcast_rate_hz": 10,
+      "qos": 0,
+      "retain": false,
+      "topics": {
+        "sensor_prefix": "PondEyes/lighthouse/S",
+        "fused_summary": "PondEyes/lighthouse/fused",
+        "telemetry": "PondEyes/lighthouse/telemetry"
+      }
+    }
+  },
+  "dashboard_visualization": {
+    "svg_seam_overlay": {
+      "enabled": true,
+      "stroke_width_pt": 0.75,
+      "stroke_color": "#FF2A2A",
+      "stroke_dasharray": "4 2",
+      "seam_bearing_angles_deg": [30.0, 90.0, 150.0, 210.0, 270.0, 330.0],
+      "ray_length_mm": 6000.0
+    },
+    "grid_origin": "top_left",
+    "display_scale": "1px_per_10mm"
+  }
+}
