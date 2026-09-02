@@ -1,5 +1,7 @@
 CompileFlags:
   Add:
+    - -xc++
+    - -std=c++17
     - -Iinclude
     - -I.
     - -Isrc

@@ -24,9 +24,24 @@
 #ifndef IRAM_ATTR
 #define IRAM_ATTR
 #endif
-#include "include/pondeyes_protocol.h"
 
-#ifndef PONDEYES_PROTOCOL_H
+// Arduino Core Timing & Utility Prototypes (C-linkage for IDE / Clangd / Toolchains)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void delay(uint32_t ms);
+void delayMicroseconds(uint32_t us);
+unsigned long millis(void);
+unsigned long micros(void);
+void yield(void);
+#ifdef __cplusplus
+}
+#endif
+#if __has_include("../include/pondeyes_protocol.h")
+#include "../include/pondeyes_protocol.h"
+#elif __has_include("include/pondeyes_protocol.h")
+#include "include/pondeyes_protocol.h"
+#else
 #include "pondeyes_protocol.h"
 #endif
 

@@ -16,7 +16,9 @@
  * ============================================================================
  */
 
+#if __has_include(<Arduino.h>)
 #include <Arduino.h>
+#endif
 #if __has_include(<HWCDC.h>)
 #include <HWCDC.h>
 #endif
@@ -34,6 +36,19 @@
 
 #ifndef IRAM_ATTR
 #define IRAM_ATTR
+#endif
+
+// Arduino Core Timing & Utility Prototypes (C-linkage for IDE / Clangd / Toolchains)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void delay(uint32_t ms);
+void delayMicroseconds(uint32_t us);
+unsigned long millis(void);
+unsigned long micros(void);
+void yield(void);
+#ifdef __cplusplus
+}
 #endif
 
 #if __has_include("../include/pondeyes_protocol.h")

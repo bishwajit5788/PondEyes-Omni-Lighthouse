@@ -283,6 +283,24 @@ pio run -e xiao_broadcaster --target upload
 
 ---
 
+## Live 360° Tracking Canvas & Simulator
+
+Run the real-time PyGame 360° tracking canvas and mock radar telemetry generator:
+
+```bash
+# 1. Install dependencies
+pip install pygame paho-mqtt
+
+# 2. Run the radar telemetry simulator (10 Hz mock feed)
+python3 simulate_radar.py
+
+# 3. In another terminal, launch the live visualization canvas
+python3 main.py
+```
+
+---
+
 ## License
 
 Distributed under the MIT License. See `LICENSE` for details.
+

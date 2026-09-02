@@ -21,10 +21,150 @@
  * ============================================================================
  */
 
+#if __has_include(<Arduino.h>)
 #include <Arduino.h>
+#endif
+#if __has_include(<WProgram.h>)
+#include <WProgram.h>
+#endif
+#if __has_include(<usb_serial.h>)
+#include <usb_serial.h>
+#endif
+#if __has_include(<HardwareSerial.h>)
+#include <HardwareSerial.h>
+#endif
+#if __has_include(<Stream.h>)
+#include <Stream.h>
+#endif
+#if __has_include(<avr_functions.h>)
+#include <avr_functions.h>
+#endif
+#if __has_include(<core_pins.h>)
+#include <core_pins.h>
+#endif
+#if __has_include(<SPI.h>)
 #include <SPI.h>
+#endif
+#if __has_include(<TSPISlave.h>)
 #include <TSPISlave.h>
+#endif
 #include <math.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+// Arduino Core Timing & Utility Prototypes (C-linkage for IDE / Clangd / Toolchains)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void delay(uint32_t ms);
+void delayMicroseconds(uint32_t us);
+unsigned long millis(void);
+unsigned long micros(void);
+void yield(void);
+#ifdef __cplusplus
+}
+#endif
+
+// Fallback declarations for IDE language servers / Clangd indexers when standalone
+#if !defined(ARDUINO) && !defined(TEENSYDUINO)
+#ifndef HIGH
+#define HIGH 1
+#define LOW  0
+#endif
+#ifndef INPUT
+#define INPUT 0
+#define OUTPUT 1
+#define INPUT_PULLUP 2
+#endif
+#ifndef CHANGE
+#define CHANGE 1
+#define FALLING 2
+#define RISING 3
+#endif
+
+#ifndef F
+#define F(str) (str)
+#endif
+
+#ifdef __cplusplus
+class Print {
+public:
+    virtual ~Print() {}
+    virtual size_t write(uint8_t) = 0;
+    virtual size_t write(const uint8_t*, size_t size) { return size; }
+    size_t print(const char*) { return 0; }
+    size_t print(char) { return 0; }
+    size_t print(int, int = 10) { return 0; }
+    size_t print(unsigned int, int = 10) { return 0; }
+    size_t print(long, int = 10) { return 0; }
+    size_t print(unsigned long, int = 10) { return 0; }
+    size_t print(double, int = 2) { return 0; }
+    size_t println(const char* = "") { return 0; }
+    size_t println(char) { return 0; }
+    size_t println(int, int = 10) { return 0; }
+    size_t println(unsigned int, int = 10) { return 0; }
+    size_t println(long, int = 10) { return 0; }
+    size_t println(unsigned long, int = 10) { return 0; }
+    size_t println(double, int = 2) { return 0; }
+    int printf(const char*, ...) __attribute__((format(printf, 2, 3))) { return 0; }
+};
+
+class Stream : public Print {
+public:
+    virtual int available() = 0;
+    virtual int read() = 0;
+    virtual int peek() = 0;
+    virtual void flush() {}
+};
+
+class HardwareSerial : public Stream {
+public:
+    void begin(uint32_t) {}
+    void end() {}
+    virtual int available() override { return 0; }
+    virtual int read() override { return -1; }
+    virtual int peek() override { return -1; }
+    virtual void flush() override {}
+    virtual size_t write(uint8_t) override { return 1; }
+    using Print::write;
+};
+
+class usb_serial_class : public Stream {
+public:
+    void begin(uint32_t) {}
+    void end() {}
+    virtual int available() override { return 0; }
+    virtual int read() override { return -1; }
+    virtual int peek() override { return -1; }
+    virtual void flush() override {}
+    virtual size_t write(uint8_t) override { return 1; }
+    using Print::write;
+    operator bool() { return true; }
+};
+
+extern usb_serial_class Serial;
+extern HardwareSerial Serial1;
+extern HardwareSerial Serial2;
+extern HardwareSerial Serial3;
+
+class SPIClass {};
+extern SPIClass SPI;
+
+class TSPISlave {
+public:
+    TSPISlave(SPIClass&, uint8_t, uint8_t, uint8_t, uint8_t) {}
+};
+
+void pinMode(uint8_t pin, uint8_t mode);
+void digitalWrite(uint8_t pin, uint8_t val);
+int digitalRead(uint8_t pin);
+void digitalWriteFast(uint8_t pin, uint8_t val);
+int digitalReadFast(uint8_t pin);
+void attachInterrupt(uint8_t pin, void (*userFunc)(void), int mode);
+uint8_t digitalPinToInterrupt(uint8_t pin);
+#endif // __cplusplus
+#endif // !defined(ARDUINO) && !defined(TEENSYDUINO)
 
 #if __has_include("../include/pondeyes_protocol.h")
 #include "../include/pondeyes_protocol.h"
@@ -302,8 +442,8 @@ void loop() {
     if (now_ms - g_last_debug_print_ms >= 1000) {
         g_last_debug_print_ms = now_ms;
         Serial.printf("[Node B] Uptime: %lu ms | Seq: %u | ActiveTargets: %u | S4: %lu pkts, S5: %lu pkts, S6: %lu pkts\n",
-                      now_ms, g_packet_sequence, g_tx_packet.target_count,
-                      g_ports[0].packets_parsed, g_ports[1].packets_parsed, g_ports[2].packets_parsed);
+                      (unsigned long)now_ms, (unsigned int)g_packet_sequence, (unsigned int)g_tx_packet.target_count,
+                      (unsigned long)g_ports[0].packets_parsed, (unsigned long)g_ports[1].packets_parsed, (unsigned long)g_ports[2].packets_parsed);
     }
 }
 

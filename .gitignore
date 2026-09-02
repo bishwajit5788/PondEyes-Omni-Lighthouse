@@ -16,3 +16,11 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Python environments & cache
+pondeyes_env/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
