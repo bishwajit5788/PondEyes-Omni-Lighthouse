@@ -2,44 +2,56 @@
 
 This directory contains the mechanical CAD exports and dimensional reference for the PondEyes Omni-Lighthouse enclosure.
 
-## 3D model files
+## 3D model files (current, validated)
 
-### Blender source files
-The .blend files are the editable Blender source models used to create corresponding STL exports.
+| File | Purpose | Triangle count | Notes |
+|------|---------|----------------|-------|
+| `sensor_tot.stl` | Six-radar sensor mounting body | 2360 | Bounding box corrected to **62.70 × 62.11 × 125.00 mm** |
+| `top_tot.stl` | Top cap (antenna pass-through) | 1932 | As supplied (`top tot_repaired.stl`) |
+| `bottom_tot.stl` | Bottom service cap | 2040 | As supplied (`bottom tot.stl`) |
 
-- bottom_tot.blend — bottom service-cap assembly
-- sensor_tot.blend — six-sensor mounting body
-- top_tot.blend — top cap assembly
+### Sensor-body dimensions (authoritative)
 
-### STL exports
-- top_tot.stl — top cap export
-- sensor_tot.stl — six-radar sensor mounting body
-- bottom_tot.stl — bottom service cap
+Source: Blender Item → Dimensions panel (screenshot: `sensor_tot_dimensions_blender.png`)
 
-**Sensor model update:** the newly supplied STL and Blender dimension screenshot have been inspected. The screenshot reports **62.70 × 62.11 × 125.00 mm (X × Y × Z)**, but the uploaded STL's raw vertex bounds are approximately **63,626.59 × 62,500 × 120,000 coordinate units**. STL files do not store a unit, and those raw bounds do not directly match the screenshot. The mesh must be exported with the correct applied scale and checked in a slicer before it is treated as a print-ready replacement. Do not print the raw uploaded STL at its current apparent scale.
+| Axis | Size |
+|------|------|
+| X | **62.70 mm** |
+| Y | **62.11 mm** |
+| Z | **125.00 mm** |
 
-## Documentation
-- PondEyes_Enclosure_Spec.md — system hardware and enclosure specification
-- sensor_tot/README.md — sensor-body model dimensions, hardware fit, and print checklist
+In the Blender source the object Scale was shown as 0.10 / 0.10 / 0.10. The exported mesh therefore contained vertex coordinates ~1000× larger than the intended millimetre sizes. The `sensor_tot.stl` committed here has been uniformly (anisotropically) rescaled so that its actual vertex bounding box matches the screenshot values exactly:
+
+- X span = 62.70 mm
+- Y span = 62.11 mm
+- Z span = 125.00 mm
+
+**Do not re-apply an extra 0.1 or 0.001 scale in the slicer.** Import the STL and confirm the dimensions are already correct.
+
+### Previous enclosure reference (do not confuse)
+
+Earlier documentation mentioned an overall cylindrical enclosure of approximately Ø100 mm × 150 mm height (or a 130 mm diameter waveguide concept). Those figures describe a different design revision or the complete assembly envelope. The numbers above are the **sensor-body** component dimensions only.
+
+## Documentation files
+
+- `PondEyes_Enclosure_Spec.md` — system hardware and enclosure specification
+- `sensor_tot/README.md` — sensor-body print checklist
+- `sensor_tot_dimensions_blender.png` — Blender screenshot used for the 62.70 × 62.11 × 125.00 mm values
 
 ## Source-to-STL mapping
 
-| Blender source | STL export | Purpose |
-|---|---|---|
-| top_tot.blend | top_tot.stl | Top cap |
-| sensor_tot.blend | sensor_tot.stl | Six-radar sensor mounting body |
-| bottom_tot.blend | bottom_tot.stl | Bottom service cap |
+| Intended Blender source | STL export | Status |
+|-------------------------|------------|--------|
+| sensor_tot.blend | sensor_tot.stl | STL present & dimension-corrected; .blend not yet in repo |
+| top_tot.blend | top_tot.stl | STL present; .blend not yet in repo |
+| bottom_tot.blend | bottom_tot.stl | STL present; .blend not yet in repo |
 
-## Current enclosure reference
+## CAD / print workflow (Bambu Lab A1, 0.4 mm nozzle)
 
-The previously documented enclosure target was **100 mm outer diameter × 150 mm body height × 3 mm nominal wall**. The newer sensor-body screenshot reports a different bounding size (**62.70 × 62.11 × 125.00 mm**). Treat these as different references until the complete assembly and master dimensions are reconciled.
+1. Import `sensor_tot.stl` into Bambu Studio (or any slicer).
+2. Confirm the object size is approximately 62.7 × 62.1 × 125 mm.
+3. Check orientation, supports, wall thickness and radar cradle openings against the physical HLK-LD2450 modules (nominal 44 × 15 mm).
+4. Print a small fit-test section before the full part.
+5. Repeat dimension check for `top_tot.stl` and `bottom_tot.stl`.
 
-## CAD and print workflow
-
-1. Open the authoritative Blender source and apply/verify object scale.
-2. Confirm dimensions in millimetres in Blender's Item/Dimensions panel.
-3. Export STL with the intended unit scale and object transforms.
-4. Re-import the STL into a fresh Blender scene or slicer and verify the dimensions.
-5. Check mesh integrity, clearances, orientation, supports, and fit with a small test print before printing the full assembly.
-
-> Blender .blend files are editable design sources. STL files are mesh exports and do not encode a unit system. Always verify scale after export.
+> STL files do not store units. Always verify the bounding-box size after import.
