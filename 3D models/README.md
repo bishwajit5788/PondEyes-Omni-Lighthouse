@@ -5,46 +5,41 @@ This directory contains the mechanical CAD exports and dimensional reference for
 ## 3D model files
 
 ### Blender source files
+The .blend files are the editable Blender source models used to create corresponding STL exports.
 
-The `.blend` files are the editable Blender source models used to create the corresponding STL exports.
-
-- `bottom_tot.blend` — editable Blender source for the bottom service-cap assembly
-- `sensor_tot.blend` — editable Blender source for the six-sensor external mounting assembly
-- `top_tot.blend` — editable Blender source for the top cap assembly
+- bottom_tot.blend — bottom service-cap assembly
+- sensor_tot.blend — six-sensor mounting body
+- top_tot.blend — top cap assembly
 
 ### STL exports
+- top_tot.stl — top cap export
+- sensor_tot.stl — six-radar sensor mounting body
+- bottom_tot.stl — bottom service cap
 
-The STL files are the 3D-printable mesh exports corresponding to the Blender source files.
+**Sensor model update:** the newly supplied STL and Blender dimension screenshot have been inspected. The screenshot reports **62.70 × 62.11 × 125.00 mm (X × Y × Z)**, but the uploaded STL's raw vertex bounds are approximately **63,626.59 × 62,500 × 120,000 coordinate units**. STL files do not store a unit, and those raw bounds do not directly match the screenshot. The mesh must be exported with the correct applied scale and checked in a slicer before it is treated as a print-ready replacement. Do not print the raw uploaded STL at its current apparent scale.
 
-- `top_tot.stl` — top cap export
-- `sensor_tot.stl` — six-sensor external mounting export
-- `bottom_tot.stl` — bottom service-cap export
-
-### Documentation
-
-- `PondEyes_Enclosure_Spec.md` — hardware and enclosure dimensions
+## Documentation
+- PondEyes_Enclosure_Spec.md — system hardware and enclosure specification
+- sensor_tot/README.md — sensor-body model dimensions, hardware fit, and print checklist
 
 ## Source-to-STL mapping
 
 | Blender source | STL export | Purpose |
 |---|---|---|
-| `top_tot.blend` | `top_tot.stl` | Top cap |
-| `sensor_tot.blend` | `sensor_tot.stl` | Six-radar sensor mounting body |
-| `bottom_tot.blend` | `bottom_tot.stl` | Bottom service cap |
+| top_tot.blend | top_tot.stl | Top cap |
+| sensor_tot.blend | sensor_tot.stl | Six-radar sensor mounting body |
+| bottom_tot.blend | bottom_tot.stl | Bottom service cap |
 
-## Mechanical target
+## Current enclosure reference
 
-**100 mm outer diameter × 150 mm body height × 3 mm nominal wall**
+The previously documented enclosure target was **100 mm outer diameter × 150 mm body height × 3 mm nominal wall**. The newer sensor-body screenshot reports a different bounding size (**62.70 × 62.11 × 125.00 mm**). Treat these as different references until the complete assembly and master dimensions are reconciled.
 
-Six HLK-LD2450 radar modules are arranged externally at 60° intervals. Two Teensy 4.1 boards and one XIAO ESP32-S3 are intended to fit inside the enclosure.
+## CAD and print workflow
 
-## CAD workflow
+1. Open the authoritative Blender source and apply/verify object scale.
+2. Confirm dimensions in millimetres in Blender's Item/Dimensions panel.
+3. Export STL with the intended unit scale and object transforms.
+4. Re-import the STL into a fresh Blender scene or slicer and verify the dimensions.
+5. Check mesh integrity, clearances, orientation, supports, and fit with a small test print before printing the full assembly.
 
-The recommended workflow is:
-
-1. Edit the corresponding `.blend` source in Blender.
-2. Verify dimensions, clearances, manifold geometry, and assembly interfaces.
-3. Export the updated component as STL for slicing/3D printing.
-4. Keep the Blender source and STL export together so the printable mesh remains traceable to its editable CAD source.
-
-> **Note:** The Blender files are the editable design sources; the STL files are mesh exports intended for fabrication and should not be treated as the primary editable CAD source.
+> Blender .blend files are editable design sources. STL files are mesh exports and do not encode a unit system. Always verify scale after export.
