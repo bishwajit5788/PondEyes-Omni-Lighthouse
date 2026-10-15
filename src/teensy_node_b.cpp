@@ -226,6 +226,7 @@ static SensorPort_t g_ports[3];
 static PondEyesSpiPacket_t g_tx_packet; // Existing 156-byte wire format retained
 static uint16_t            g_packet_sequence = 0;
 static uint32_t            g_last_debug_print_ms = 0;
+static uint32_t            g_last_packet_tx_ms = 0;
 
 // Temporary target buffers for rotation and deduplication
 static PondEyesTarget_t    g_transformed_targets[MAX_TARGETS_PER_NODE];
@@ -374,11 +375,16 @@ void loop() {
     if (fresh_data) {
         transform_targets_to_global();
         deduplicate_seam_targets();
+    }
+
+    // Publish a fixed-rate packet even with no radar targets, enabling link diagnostics.
+    uint32_t now_ms = millis();
+    if (now_ms - g_last_packet_tx_ms >= 100) {
+        g_last_packet_tx_ms = now_ms;
         prepare_uart_packet();
     }
 
     // 4. Periodic diagnostic telemetry on USB Serial
-    uint32_t now_ms = millis();
     if (now_ms - g_last_debug_print_ms >= 1000) {
         g_last_debug_print_ms = now_ms;
         Serial.printf("[Node B] Uptime: %lu ms | Seq: %u | ActiveTargets: %u | S4: %lu pkts, S5: %lu pkts, S6: %lu pkts\n",
