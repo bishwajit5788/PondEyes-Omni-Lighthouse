@@ -28,7 +28,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <SPI.h>
 #include <esp_task_wdt.h>
 #if __has_include(<esp_attr.h>)
 #include <esp_attr.h>
@@ -60,18 +59,9 @@ void yield(void);
 #endif
 
 // ============================================================================
-// HARDWARE PIN DEFINITIONS (Seeed Studio XIAO ESP32-S3)
-// ============================================================================
-#define PIN_SPI_SCK                 7   // D8 (GPIO 7) - SPI Clock Out (8 MHz)
-#define PIN_SPI_MISO                8   // D9 (GPIO 8) - SPI MISO In (from Teensy nodes)
-#define PIN_SPI_MOSI                9   // D10 (GPIO 9) - SPI MOSI Out (to Teensy nodes)
-
-#define PIN_CS_NODE_A               2   // D1 (GPIO 2) - Chip Select for Teensy Node A
-#define PIN_CS_NODE_B               3   // D2 (GPIO 3) - Chip Select for Teensy Node B
-
-#define PIN_DRDY_NODE_A             4   // D3 (GPIO 4) - Data Ready Interrupt from Node A
-#define PIN_DRDY_NODE_B             5   // D4 (GPIO 5) - Data Ready Interrupt from Node B
-
+// UART receive pins on the Seeed XIAO ESP32-S3.
+#define PIN_NODE_A_UART_RX          1   // D0 / GPIO1, data from Teensy Node A TX4
+#define PIN_NODE_B_UART_RX          6   // D5 / GPIO6, data from Teensy Node B TX4
 #define PIN_STATUS_LED              21  // Yellow User LED on XIAO ESP32-S3
 #define WDT_TIMEOUT_SECONDS         8   // Hardware Watchdog Period
 
@@ -104,9 +94,21 @@ static PubSubClient         g_mqtt_client(g_wifi_client);
 static StaticJsonDocument<2048> g_static_json_doc;
 static char                 g_mqtt_payload_buffer[2048];
 
-// SPI Raw Packets
+// Fixed-size binary packets; struct layout and CRC16 remain unchanged.
 static PondEyesSpiPacket_t  g_packet_node_a;
 static PondEyesSpiPacket_t  g_packet_node_b;
+
+typedef struct {
+    uint8_t bytes[sizeof(PondEyesSpiPacket_t)];
+    size_t used;
+    uint32_t valid_packets;
+    uint32_t crc_errors;
+} UartPacketParser_t;
+
+static HardwareSerial g_node_a_uart(1);
+static HardwareSerial g_node_b_uart(2);
+static UartPacketParser_t g_uart_parser_a = {};
+static UartPacketParser_t g_uart_parser_b = {};
 
 // Cached Targets from last successful read
 static PondEyesTarget_t     g_latest_targets_a[MAX_TARGETS_PER_NODE];
@@ -117,11 +119,7 @@ static PondEyesTarget_t     g_latest_targets_b[MAX_TARGETS_PER_NODE];
 static uint8_t              g_latest_count_b = 0;
 static uint32_t             g_last_seen_node_b_ms = 0;
 
-// Interrupt Flags
-static volatile bool        g_drdy_flag_a = false;
-static volatile bool        g_drdy_flag_b = false;
-
-// Diagnostics & Timers
+// Diagnostics & Timers. Legacy spi_ok telemetry names are retained for dashboard compatibility.
 static uint32_t             g_spi_success_a = 0;
 static uint32_t             g_spi_crc_err_a = 0;
 static uint32_t             g_spi_success_b = 0;
@@ -138,13 +136,12 @@ static const uint32_t       WIFI_MAX_BACKOFF_MS = 30000;
 // ============================================================================
 // FUNCTION DECLARATIONS
 // ============================================================================
-void IRAM_ATTR isr_drdy_node_a();
-void IRAM_ATTR isr_drdy_node_b();
-void init_gpio_and_spi();
+void init_uart_links();
 void init_watchdog();
 void maintain_wifi_exponential_backoff();
 void maintain_mqtt_connection();
-bool read_node_spi(uint8_t cs_pin, PondEyesSpiPacket_t* dest_packet);
+bool poll_node_uart(HardwareSerial& uart, uint8_t expected_node_id,
+                    UartPacketParser_t* parser, PondEyesSpiPacket_t* dest_packet);
 void publish_sensor_payloads_10hz();
 void publish_fused_summary_json();
 void publish_system_heartbeat();
@@ -158,10 +155,10 @@ void setup() {
 
     Serial.println(F("\n========================================================"));
     Serial.println(F(" PondEyes Omni-Lighthouse: MASTER COORDINATOR (ESP32-S3)"));
-    Serial.println(F(" Dual SPI Master -> 10Hz Static-Memory MQTT Broadcaster"));
+    Serial.println(F(" Dual UART Receiver -> 10Hz Static-Memory MQTT Broadcaster"));
     Serial.println(F("========================================================"));
 
-    init_gpio_and_spi();
+    init_uart_links();
     init_watchdog();
 
     g_mqtt_client.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
@@ -174,25 +171,18 @@ void setup() {
 }
 
 // ============================================================================
-// GPIO & SPI INITIALIZATION
+// UART INITIALIZATION
 // ============================================================================
-void init_gpio_and_spi() {
+void init_uart_links() {
     pinMode(PIN_STATUS_LED, OUTPUT);
     digitalWrite(PIN_STATUS_LED, HIGH);
 
-    pinMode(PIN_CS_NODE_A, OUTPUT);
-    pinMode(PIN_CS_NODE_B, OUTPUT);
-    digitalWrite(PIN_CS_NODE_A, HIGH); // Inactive High
-    digitalWrite(PIN_CS_NODE_B, HIGH); // Inactive High
-
-    pinMode(PIN_DRDY_NODE_A, INPUT_PULLDOWN);
-    pinMode(PIN_DRDY_NODE_B, INPUT_PULLDOWN);
-    attachInterrupt(digitalPinToInterrupt(PIN_DRDY_NODE_A), isr_drdy_node_a, RISING);
-    attachInterrupt(digitalPinToInterrupt(PIN_DRDY_NODE_B), isr_drdy_node_b, RISING);
-
-    SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI);
+    g_node_a_uart.begin(PONDEYES_NODE_UART_BAUD, SERIAL_8N1, PIN_NODE_A_UART_RX, -1);
+    g_node_b_uart.begin(PONDEYES_NODE_UART_BAUD, SERIAL_8N1, PIN_NODE_B_UART_RX, -1);
 
     digitalWrite(PIN_STATUS_LED, LOW);
+    Serial.printf("[UART] Node A RX GPIO%d, Node B RX GPIO%d, baud %u\n",
+                  PIN_NODE_A_UART_RX, PIN_NODE_B_UART_RX, PONDEYES_NODE_UART_BAUD);
 }
 
 // ============================================================================
@@ -202,17 +192,6 @@ void init_watchdog() {
     esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
     esp_task_wdt_add(NULL);
     esp_task_wdt_reset();
-}
-
-// ============================================================================
-// DATA READY ISRs
-// ============================================================================
-void IRAM_ATTR isr_drdy_node_a() {
-    g_drdy_flag_a = true;
-}
-
-void IRAM_ATTR isr_drdy_node_b() {
-    g_drdy_flag_b = true;
 }
 
 // ============================================================================
@@ -228,34 +207,25 @@ void loop() {
         g_mqtt_client.loop();
     }
 
-    // 2. Poll Node A over SPI when signaled
-    if (g_drdy_flag_a || digitalRead(PIN_DRDY_NODE_A) == HIGH) {
-        g_drdy_flag_a = false;
-        if (read_node_spi(PIN_CS_NODE_A, &g_packet_node_a)) {
-            g_latest_count_a = g_packet_node_a.target_count;
-            for (uint8_t i = 0; i < g_latest_count_a; i++) {
-                g_latest_targets_a[i] = g_packet_node_a.targets[i];
-            }
-            g_last_seen_node_a_ms = millis();
-            g_spi_success_a++;
-        } else {
-            g_spi_crc_err_a++;
+    // 2. Drain both UART streams; accept only complete packets with valid CRC and node ID.
+    if (poll_node_uart(g_node_a_uart, NODE_ID_A, &g_uart_parser_a, &g_packet_node_a)) {
+        g_latest_count_a = g_packet_node_a.target_count;
+        for (uint8_t i = 0; i < g_latest_count_a; i++) {
+            g_latest_targets_a[i] = g_packet_node_a.targets[i];
         }
+        g_last_seen_node_a_ms = millis();
+        g_spi_success_a = g_uart_parser_a.valid_packets;
+        g_spi_crc_err_a = g_uart_parser_a.crc_errors;
     }
 
-    // 3. Poll Node B over SPI when signaled
-    if (g_drdy_flag_b || digitalRead(PIN_DRDY_NODE_B) == HIGH) {
-        g_drdy_flag_b = false;
-        if (read_node_spi(PIN_CS_NODE_B, &g_packet_node_b)) {
-            g_latest_count_b = g_packet_node_b.target_count;
-            for (uint8_t i = 0; i < g_latest_count_b; i++) {
-                g_latest_targets_b[i] = g_packet_node_b.targets[i];
-            }
-            g_last_seen_node_b_ms = millis();
-            g_spi_success_b++;
-        } else {
-            g_spi_crc_err_b++;
+    if (poll_node_uart(g_node_b_uart, NODE_ID_B, &g_uart_parser_b, &g_packet_node_b)) {
+        g_latest_count_b = g_packet_node_b.target_count;
+        for (uint8_t i = 0; i < g_latest_count_b; i++) {
+            g_latest_targets_b[i] = g_packet_node_b.targets[i];
         }
+        g_last_seen_node_b_ms = millis();
+        g_spi_success_b = g_uart_parser_b.valid_packets;
+        g_spi_crc_err_b = g_uart_parser_b.crc_errors;
     }
 
     // 4. 10 Hz Periodic MQTT Broadcaster using Static Memory
@@ -278,24 +248,50 @@ void loop() {
 }
 
 // ============================================================================
-// HARDWARE SPI TRANSACTION (8 MHz with CRC16 Verification)
+// STREAM-ALIGNED UART PACKET RECEIVER
 // ============================================================================
-bool read_node_spi(uint8_t cs_pin, PondEyesSpiPacket_t* dest_packet) {
-    size_t packet_size = sizeof(PondEyesSpiPacket_t);
-    uint8_t* rx_ptr = (uint8_t*)dest_packet;
+bool poll_node_uart(HardwareSerial& uart, uint8_t expected_node_id,
+                    UartPacketParser_t* parser, PondEyesSpiPacket_t* dest_packet) {
+    bool received_valid_packet = false;
+    const size_t packet_size = sizeof(PondEyesSpiPacket_t);
 
-    SPI.beginTransaction(SPISettings(PONDEYES_SPI_CLOCK_HZ, PONDEYES_SPI_BIT_ORDER, PONDEYES_SPI_DATA_MODE));
-    digitalWrite(cs_pin, LOW);
-    delayMicroseconds(2);
+    while (uart.available() > 0) {
+        const uint8_t byte_in = static_cast<uint8_t>(uart.read());
 
-    for (size_t i = 0; i < packet_size; i++) {
-        rx_ptr[i] = SPI.transfer(0x00);
+        // Seek the two-byte packet magic, including recovery after line noise.
+        if (parser->used == 0) {
+            if (byte_in == PONDEYES_MAGIC_0) parser->bytes[parser->used++] = byte_in;
+            continue;
+        }
+        if (parser->used == 1) {
+            if (byte_in == PONDEYES_MAGIC_1) {
+                parser->bytes[parser->used++] = byte_in;
+            } else {
+                parser->used = (byte_in == PONDEYES_MAGIC_0) ? 1 : 0;
+                if (parser->used == 1) parser->bytes[0] = byte_in;
+            }
+            continue;
+        }
+
+        parser->bytes[parser->used++] = byte_in;
+        if (parser->used < packet_size) continue;
+
+        PondEyesSpiPacket_t candidate;
+        memcpy(&candidate, parser->bytes, packet_size);
+        parser->used = 0;
+
+        if (pondeyes_verify_packet_crc(&candidate) &&
+            candidate.node_id == expected_node_id &&
+            candidate.target_count <= MAX_TARGETS_PER_NODE) {
+            *dest_packet = candidate;
+            parser->valid_packets++;
+            received_valid_packet = true;
+        } else {
+            parser->crc_errors++;
+        }
     }
 
-    digitalWrite(cs_pin, HIGH);
-    SPI.endTransaction();
-
-    return pondeyes_verify_packet_crc(dest_packet);
+    return received_valid_packet;
 }
 
 // ============================================================================
@@ -473,12 +469,14 @@ void publish_system_heartbeat() {
     g_static_json_doc["free_heap_bytes"] = ESP.getFreeHeap();
 
     JsonObject stats_a = g_static_json_doc.createNestedObject("node_a");
-    stats_a["spi_ok"]      = g_spi_success_a;
+    stats_a["spi_ok"]      = g_spi_success_a; // Legacy key retained for dashboard compatibility
+    stats_a["uart_ok"]     = g_uart_parser_a.valid_packets;
     stats_a["crc_err"]     = g_spi_crc_err_a;
     stats_a["last_seen_ms"]= millis() - g_last_seen_node_a_ms;
 
     JsonObject stats_b = g_static_json_doc.createNestedObject("node_b");
-    stats_b["spi_ok"]      = g_spi_success_b;
+    stats_b["spi_ok"]      = g_spi_success_b; // Legacy key retained for dashboard compatibility
+    stats_b["uart_ok"]     = g_uart_parser_b.valid_packets;
     stats_b["crc_err"]     = g_spi_crc_err_b;
     stats_b["last_seen_ms"]= millis() - g_last_seen_node_b_ms;
 
