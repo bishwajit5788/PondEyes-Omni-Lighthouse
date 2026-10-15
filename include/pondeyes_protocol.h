@@ -113,6 +113,12 @@ typedef struct {
 
 #pragma pack(pop)
 
+#if defined(__cplusplus)
+static_assert(sizeof(LD2450_RawTarget_t) == 9, "LD2450 raw target layout changed");
+static_assert(sizeof(PondEyesTarget_t) == 16, "PondEyes target layout changed");
+static_assert(sizeof(PondEyesSpiPacket_t) == 156, "PondEyes packet must remain 156 bytes");
+#endif
+
 // ============================================================================
 // CRC16-CCITT CHECKSUM IMPLEMENTATION (Polynomial: 0x1021, Init: 0xFFFF)
 // ============================================================================
