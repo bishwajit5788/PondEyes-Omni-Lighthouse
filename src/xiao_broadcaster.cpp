@@ -58,6 +58,22 @@ void yield(void);
 #include "pondeyes_protocol.h"
 #endif
 
+// Optional local-only credentials. Create include/pondeyes_secrets.h from the
+// example template; .gitignore prevents the real file from being committed.
+#if __has_include("../include/pondeyes_secrets.h")
+#include "../include/pondeyes_secrets.h"
+#endif
+
+#ifndef PONDEYES_WIFI_SSID
+#define PONDEYES_WIFI_SSID "CHANGE_ME"
+#endif
+#ifndef PONDEYES_WIFI_PASSWORD
+#define PONDEYES_WIFI_PASSWORD "CHANGE_ME"
+#endif
+#ifndef PONDEYES_MQTT_BROKER_HOST
+#define PONDEYES_MQTT_BROKER_HOST "192.168.1.100"
+#endif
+
 // ============================================================================
 // UART receive pins on the Seeed XIAO ESP32-S3.
 #define PIN_NODE_A_UART_RX          1   // D0 / GPIO1, data from Teensy Node A TX4
@@ -68,10 +84,9 @@ void yield(void);
 // ============================================================================
 // NETWORK & MQTT CONFIGURATION
 // ============================================================================
-const char* WIFI_SSID               = "PondEyes_Field_AP";
-const char* WIFI_PASSWORD           = "OmniLighthouse2026";
-
-const char* MQTT_BROKER_HOST        = "192.168.1.100";
+const char* WIFI_SSID               = PONDEYES_WIFI_SSID;
+const char* WIFI_PASSWORD           = PONDEYES_WIFI_PASSWORD;
+const char* MQTT_BROKER_HOST        = PONDEYES_MQTT_BROKER_HOST;
 const uint16_t MQTT_BROKER_PORT     = 1883;
 const char* MQTT_CLIENT_ID          = "PondEyes_Lighthouse_Coord";
 const char* MQTT_USER               = "";
