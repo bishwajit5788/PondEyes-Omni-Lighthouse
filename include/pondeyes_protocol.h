@@ -5,9 +5,8 @@
  * Target Platforms: Teensy 4.1 (ARM Cortex-M7) & Seeed Studio XIAO ESP32-S3
  * ============================================================================
  * 
- * Defines high-efficiency binary data structures, endianness-safe packing,
- * sensor physical orientation constants, and CRC16 checksum validation for
- * low-latency SPI bus communications and 10Hz MQTT streaming.
+ * Defines packed binary data structures, sensor orientations, and CRC16
+ * validation for low-latency UART node links and 10Hz MQTT streaming.
  */
 
 #ifndef PONDEYES_PROTOCOL_H
@@ -62,10 +61,8 @@ extern "C" {
 #define SENSOR_5_ANGLE_DEG          240.0f  // Node B - S5: West-South-West
 #define SENSOR_6_ANGLE_DEG          300.0f  // Node B - S6: West-North-West
 
-// SPI Bus Configuration
-#define PONDEYES_SPI_CLOCK_HZ       8000000 // 8 MHz hardware SPI transfer
-#define PONDEYES_SPI_BIT_ORDER      MSBFIRST
-#define PONDEYES_SPI_DATA_MODE      SPI_MODE0
+// Inter-node UART transport. The packet struct below remains 156 bytes.
+#define PONDEYES_NODE_UART_BAUD     115200
 
 // ============================================================================
 // PACKED DATA STRUCTURES (Zero-padding, Byte-aligned across ARM & Xtensa)
@@ -100,7 +97,7 @@ typedef struct {
 } PondEyesTarget_t;
 
 /**
- * @brief High-speed binary transmission packet exchanged over SPI.
+ * @brief Fixed-size binary packet exchanged between a radar node and coordinator over UART.
  * Total size: 2 (magic) + 1 (node_id) + 2 (sequence) + 4 (timestamp) + 1 (count) 
  *             + 9 * 16 (targets) + 2 (crc16) = 156 bytes.
  */
