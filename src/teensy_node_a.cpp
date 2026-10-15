@@ -10,14 +10,11 @@
  *   - Sensor 3 (S3): Angle 120.0° (East-South-East)       -> Hardware Serial3 (256,000 baud)
  * 
  * Core Features & Hardware Fixes:
- *   1. Hardware SPI Slave utilizing <TSPISlave.h> for deterministic transfers
- *   2. Active High-Impedance MISO Switching (Tri-State) to eliminate bus collisions:
- *      - pinMode(PIN_SPI_MISO, INPUT) when CS is HIGH (inactive)
- *      - pinMode(PIN_SPI_MISO, OUTPUT) when CS is LOW (active selected)
- *   3. 3x Non-blocking 256k-baud UART Ring Buffers for HLK-LD2450 30-byte frames
- *   4. Sign-magnitude 16-bit coordinate extraction (X, Y, Speed, Distance)
- *   5. Real-time Trigonometric Rotation Matrix to unified [5000, 5000] mm grid
- *   6. 500mm Euclidean Distance Deduplication loop near boundary seams
+ *   1. Buffered Serial4 UART packet transport to the XIAO ESP32-S3
+ *   2. 3x non-blocking 256k-baud radar UART parsers
+ *   3. Sign-magnitude 16-bit coordinate extraction (X, Y, Speed, Distance)
+ *   4. Real-time Trigonometric Rotation Matrix to unified [5000, 5000] mm grid
+ *   5. 500mm Euclidean Distance Deduplication loop near boundary seams
  * ============================================================================
  */
 
@@ -41,12 +38,6 @@
 #endif
 #if __has_include(<core_pins.h>)
 #include <core_pins.h>
-#endif
-#if __has_include(<SPI.h>)
-#include <SPI.h>
-#endif
-#if __has_include(<TSPISlave.h>)
-#include <TSPISlave.h>
 #endif
 #include <math.h>
 #include <string.h>
@@ -147,15 +138,7 @@ extern usb_serial_class Serial;
 extern HardwareSerial Serial1;
 extern HardwareSerial Serial2;
 extern HardwareSerial Serial3;
-
-class SPIClass {};
-extern SPIClass SPI;
-
-class TSPISlave {
-public:
-    TSPISlave(SPIClass&, uint8_t, uint8_t, uint8_t, uint8_t) {}
-};
-
+extern HardwareSerial Serial4;
 void pinMode(uint8_t pin, uint8_t mode);
 void digitalWrite(uint8_t pin, uint8_t val);
 int digitalRead(uint8_t pin);
@@ -179,12 +162,8 @@ uint8_t digitalPinToInterrupt(uint8_t pin);
 // ============================================================================
 #define NODE_ID                     NODE_ID_A
 
-// Teensy 4.1 Hardware SPI0 Pins
-#define PIN_SPI_CS                  10  // SPI Chip Select (Input from ESP32-S3)
-#define PIN_SPI_MOSI                11  // SPI MOSI (Input from ESP32-S3)
-#define PIN_SPI_MISO                12  // SPI MISO (Tri-state Output to ESP32-S3)
-#define PIN_SPI_SCK                 13  // SPI Clock (Input from ESP32-S3)
-#define PIN_SPI_DRDY                2   // Data Ready Handshake (Output to ESP32-S3)
+// UART packet link to XIAO ESP32-S3. Teensy 4.1 Serial4 TX is pin 17.
+#define PIN_NODE_UART_TX            17
 #define PIN_STATUS_LED              13  // Onboard Diagnostic LED
 
 // Sensor Mapping for Node A
@@ -242,12 +221,10 @@ typedef struct {
 static SensorPort_t g_ports[3];
 
 // ============================================================================
-// SPI SLAVE & PACKET BUFFERING
+// UART TRANSPORT & PACKET BUFFERING
 // ============================================================================
-static TSPISlave           g_spi_slave = TSPISlave(SPI, PIN_SPI_MISO, PIN_SPI_MOSI, PIN_SPI_SCK, PIN_SPI_CS);
-static PondEyesSpiPacket_t g_tx_packet;
-static volatile bool       g_cs_active = false;
-static volatile uint16_t   g_packet_sequence = 0;
+static PondEyesSpiPacket_t g_tx_packet; // Existing 156-byte wire format retained
+static uint16_t            g_packet_sequence = 0;
 static uint32_t            g_last_debug_print_ms = 0;
 
 // Temporary target buffers for rotation and deduplication
@@ -259,13 +236,13 @@ static uint8_t             g_transformed_count = 0;
 // ============================================================================
 void init_sensor_geometry();
 void init_uart_ports();
-void init_spi_slave_interface();
+void init_uart_transport();
+void send_node_packet();
 void process_uart_port(SensorPort_t* port);
 void parse_raw_payload(SensorPort_t* port);
 void transform_targets_to_global();
 void deduplicate_seam_targets();
-void prepare_spi_packet();
-void isr_cs_pin_transition();
+void prepare_uart_packet();
 
 // ============================================================================
 // SETUP
@@ -279,7 +256,7 @@ void setup() {
     Serial.println(F("=================================================="));
     Serial.println(F(" PondEyes Omni-Lighthouse: TEENSY NODE A"));
     Serial.println(F(" Node ID: 0x0A | S1@0°, S2@60°, S3@120°"));
-    Serial.println(F(" Baudrate: 256k | TSPISlave + Tri-State MISO"));
+    Serial.println(F(" Radar UARTs: 256k | Node link: Serial4 TX 115200 baud"));
     Serial.println(F("=================================================="));
 
     // Precompute trigonometric matrices
@@ -288,8 +265,8 @@ void setup() {
     // Initialize 3 Hardware Serial ports at 256,000 baud concurrently
     init_uart_ports();
 
-    // Initialize SPI Slave & Tri-State MISO management
-    init_spi_slave_interface();
+    // Initialize buffered UART link to the XIAO coordinator
+    init_uart_transport();
 
     digitalWrite(PIN_STATUS_LED, LOW);
     Serial.println(F("[Node A] Initialization successful. System active."));
@@ -353,22 +330,10 @@ void init_uart_ports() {
 }
 
 // ============================================================================
-// INITIALIZE SPI SLAVE & HIGH-IMPEDANCE MISO
+// INITIALIZE UART TRANSPORT TO XIAO ESP32-S3
 // ============================================================================
-void init_spi_slave_interface() {
-    pinMode(PIN_SPI_DRDY, OUTPUT);
-    digitalWrite(PIN_SPI_DRDY, LOW);
-
-    // FIX MISO COLLISIONS: Configure MISO as high-impedance INPUT initially
-    pinMode(PIN_SPI_CS, INPUT_PULLUP);
-    pinMode(PIN_SPI_MOSI, INPUT);
-    pinMode(PIN_SPI_SCK, INPUT);
-    pinMode(PIN_SPI_MISO, INPUT); // Tri-state high impedance
-
-    // Attach high-priority interrupt to CS line for instantaneous tri-state switching
-    attachInterrupt(digitalPinToInterrupt(PIN_SPI_CS), isr_cs_pin_transition, CHANGE);
-
-    // Pre-initialize empty sealed packet
+void init_uart_transport() {
+    Serial4.begin(PONDEYES_NODE_UART_BAUD);
     memset(&g_tx_packet, 0, sizeof(g_tx_packet));
     g_tx_packet.magic[0] = PONDEYES_MAGIC_0;
     g_tx_packet.magic[1] = PONDEYES_MAGIC_1;
@@ -380,36 +345,11 @@ void init_spi_slave_interface() {
 }
 
 // ============================================================================
-// ACTIVE HIGH-IMPEDANCE MISO SWITCHING ISR
+// TRANSMIT SEALED PACKET ON BUFFERED UART
 // ============================================================================
-void isr_cs_pin_transition() {
-    int cs_val = digitalReadFast(PIN_SPI_CS);
-
-    if (cs_val == LOW) {
-        // CS pulled LOW by Master: This node is SELECTED
-        // Enable MISO pin as OUTPUT to drive the bus
-        pinMode(PIN_SPI_MISO, OUTPUT);
-        g_cs_active = true;
-
-        // Clock out current packet buffer synchronously with Master SCK
-        const uint8_t* p_bytes = (const uint8_t*)&g_tx_packet;
-        size_t total_len = sizeof(PondEyesSpiPacket_t);
-
-        for (size_t b = 0; b < total_len; b++) {
-            uint8_t out_byte = p_bytes[b];
-            for (int bit = 7; bit >= 0; bit--) {
-                while (digitalReadFast(PIN_SPI_SCK) == HIGH && digitalReadFast(PIN_SPI_CS) == LOW);
-                digitalWriteFast(PIN_SPI_MISO, (out_byte & (1 << bit)) ? HIGH : LOW);
-                while (digitalReadFast(PIN_SPI_SCK) == LOW && digitalReadFast(PIN_SPI_CS) == LOW);
-            }
-        }
-    } else {
-        // CS pulled HIGH by Master: This node is DESELECTED
-        // Instantly return MISO to floating INPUT (high impedance) to prevent bus collision
-        pinMode(PIN_SPI_MISO, INPUT);
-        digitalWriteFast(PIN_SPI_DRDY, LOW);
-        g_cs_active = false;
-    }
+void send_node_packet() {
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&g_tx_packet);
+    Serial4.write(bytes, sizeof(g_tx_packet));
 }
 
 // ============================================================================
@@ -430,11 +370,11 @@ void loop() {
         }
     }
 
-    // 3. Transform coordinates, deduplicate seams, and update SPI packet
+    // 3. Transform coordinates, deduplicate seams, and prepare UART packet
     if (fresh_data) {
         transform_targets_to_global();
         deduplicate_seam_targets();
-        prepare_spi_packet();
+        prepare_uart_packet();
     }
 
     // 4. Periodic diagnostic telemetry on USB Serial
@@ -651,9 +591,9 @@ void deduplicate_seam_targets() {
 }
 
 // ============================================================================
-// PACK SPI BUFFER AND ASSERT DATA READY (DRDY)
+// PREPARE AND TRANSMIT THE EXISTING 156-BYTE PACKET OVER UART
 // ============================================================================
-void prepare_spi_packet() {
+void prepare_uart_packet() {
     g_tx_packet.magic[0]      = PONDEYES_MAGIC_0;
     g_tx_packet.magic[1]      = PONDEYES_MAGIC_1;
     g_tx_packet.node_id       = NODE_ID;
@@ -670,6 +610,5 @@ void prepare_spi_packet() {
 
     pondeyes_seal_packet_crc(&g_tx_packet);
 
-    // Pulse DRDY HIGH to notify master coordinator
-    digitalWriteFast(PIN_SPI_DRDY, HIGH);
+    send_node_packet();
 }
