@@ -24,3 +24,5 @@ venv/
 __pycache__/
 *.pyc
 
+# Local-only PondEyes network credentials
+include/pondeyes_secrets.h
